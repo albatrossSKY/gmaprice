@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>USD ↔︎ GMA Converter</title>
+<style>
+    :root{
+        --bg:#0b111a;
+        --accent:#3c7cff;
+        --text:#e0e6ed;
+        --input-bg:#1a2332;
+        --border:#33415c;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{
+        background:var(--bg);
+        color:var(--text);
+        font-family:system-ui, sans-serif;
+        display:flex;align-items:center;justify-content:center;height:100vh;
+    }
+    .converter{
+        background:rgba(255,255,255,.04);
+        padding:2rem 3rem;
+        border-radius:12px;
+        box-shadow:0 8px 24px rgba(0,0,0,.5);
+        display:flex;gap:1.2rem;align-items:center;
+    }
+    input{
+        background:var(--input-bg);
+        color:var(--text);
+        border:1px solid var(--border);
+        padding:.6rem .8rem;
+        font-size:1.3rem;
+        width:140px;
+        text-align:right;
+        border-radius:4px;
+    }
+    input:focus{outline:none;border-color:var(--accent);}
+    .equals{
+        color:var(--accent);font-size:2rem;font-weight:bold;
+    }
+    .status{
+        margin-top:.8rem;
+        font-size:.85rem;
+        text-align:center;
+    }
+</style>
+</head>
+<body>
+
+<div class="converter">
+  <input id="usd" placeholder="USD" type="number" step="any">
+  <span class="equals">=</span>
+  <input id="gma" placeholder="GMA" type="number" step="any">
+</div>
+<div class="status" id="status"></div>
+
+<script>
+// ──────────────────────
+// Configuration
+// ──────────────────────
+const USD_API   = 'https://api.exchangerate.host/latest?base=USD&symbols=USD';
+const GMA_API   = 'https://www.geckoterminal.com/base/pools/0xacdc038f3d165b83cb4e1591739fb9845a7c63b6'; // returns JSON with price data
+const REFRESH_MS = 30000; // 30 seconds
+
+// ──────────────────────
+// State
+// ──────────────────────
+let usdRate   = null;   // USD per GMA (i.e., how many USD for 1 GMA)
+let gmaPrice  = null;   // price of GMA in USD from GeckoTerminal
+
+// ──────────────────────
+// UI Elements
+// ──────────────────────
+const usdInput  = document.getElementById('usd');
+const gmaInput  = document.getElementById('gma');
+const statusEl  = document.getElementById('status');
+
+// ──────────────────────
+// Helper: Update both fields based on one
+// ──────────────────────
+function updateFromUSD(val){
+    if(usdRate===null) return;
+    const gmaVal = val / usdRate;
+    gmaInput.value = gmaVal.toFixed(6);
+}
+function updateFromGMA(val){
+    if(usdRate===null) return;
+    const usdVal = val * usdRate;
+    usdInput.value = usdVal.toFixed(2);
+}
+
+// ──────────────────────
+// Event listeners
+// ──────────────────────
+usdInput.addEventListener('input', e=>{
+    const v=parseFloat(e.target.value);
+    if(isNaN(v)) return;
+    updateFromUSD(v);
+});
+gmaInput.addEventListener('input', e=>{
+    const v=parseFloat(e.target.value);
+    if(isNaN(v)) return;
+    updateFromGMA(v);
+});
+
+// ──────────────────────
+// Data fetching
+// ──────────────────────
+async function fetchRates(){
+    try{
+        // USD ↔︎ GMA: we need price of 1 GMA in USD.
+        // GeckoTerminal returns a field `price_usd` (current pool price).
+        const gmaResp = await fetch(GMA_API);
+        const gmaData = await gmaResp.json();
+        if(gmaData && gmaData.price_usd){
+            gmaPrice = parseFloat(gmaData.price_usd);
+        }else{
+            throw new Error('GMA data missing');
+        }
+
+        // USD base is already 1, but we fetch to keep the example general
+        const usdResp = await fetch(USD_API);
+        const usdObj  = await usdResp.json();
+        if(usdObj && usdObj.rates){
+            // usdRate = price of 1 GMA in USD (so same as gmaPrice)
+            usdRate = gmaPrice;
+        }else{
+            throw new Error('USD data missing');
+        }
+
+        statusEl.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+    }catch(err){
+        console.error(err);
+        statusEl.textContent = '⚠️ Unable to fetch rates';
+    }
+}
+
+// ──────────────────────
+// Initial load + periodic refresh
+// ──────────────────────
+fetchRates();
+setInterval(fetchRates, REFRESH_MS);
+
+</script>
+</body>
+</html>
